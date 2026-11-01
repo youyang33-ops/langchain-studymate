@@ -1,0 +1,14 @@
+# 需要 Python 3.11+（3.10 下 LangGraph 的异步 interrupt 无法获取上下文，Web 服务的人工审批会失败）
+langchain>=1.4,<2
+langchain-openai>=1.7
+langgraph>=1.2
+langgraph-checkpoint-sqlite>=3.1   # 第 9 课：会话持久化到 SQLite
+langchain-text-splitters>=1.1
+langchain-chroma>=1.1              # 第 7 课：持久化向量库
+numpy>=1.26                        # InMemoryVectorStore 计算余弦相似度需要
+pypdf>=6.0                         # 第 7 课：PDF 加载
+httpx>=0.28                        # 调用重排序接口
+fastapi>=0.162                     # 第 9 课：原生 SSE 支持（fastapi.sse）
+uvicorn>=0.30
+python-dotenv>=1.0
+pytest>=8

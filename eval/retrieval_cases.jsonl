@@ -1,0 +1,24 @@
+{"question": "服务重启后会话历史都没了，该换成什么来保存状态？", "source": "09_engineering.md", "keyword": "PostgresSaver"}
+{"question": "为什么注意力公式里要除以根号 d", "source": "06_llm_basics.md", "keyword": "√d"}
+{"question": "HNSW 索引的原理", "source": "07_vector_retrieval.md", "keyword": "HNSW"}
+{"question": "RRF 的 k 一般取多少", "source": "07_vector_retrieval.md", "keyword": "k 一般取 60"}
+{"question": "BM25 里参数 b 是干什么的", "source": "07_vector_retrieval.md", "keyword": "长度归一化"}
+{"question": "怎样防止有人在输入里写忽略之前的指令来攻击 agent", "source": "09_engineering.md", "keyword": "提示词注入"}
+{"question": "什么是 LoRA 微调", "source": "06_llm_basics.md", "keyword": "低秩"}
+{"question": "想让模型学会公司内部的新知识，应该微调还是外挂知识库", "source": "06_llm_basics.md", "keyword": "RAG 还是微调"}
+{"question": "温度参数调高调低分别有什么效果", "source": "06_llm_basics.md", "keyword": "温度越低"}
+{"question": "交叉编码器和双塔模型的区别", "source": "07_vector_retrieval.md", "keyword": "Cross-Encoder"}
+{"question": "用户说那它呢，检索之前要怎么处理", "source": "07_vector_retrieval.md", "keyword": "指代消解"}
+{"question": "子 agent 的中间结果会不会撑爆主管的上下文", "source": "08_multi_agent_mcp.md", "keyword": "上下文隔离"}
+{"question": "A2A 协议是谁提出的，解决什么问题", "source": "08_multi_agent_mcp.md", "keyword": "A2A"}
+{"question": "MCP Server 能暴露哪几类能力", "source": "08_multi_agent_mcp.md", "keyword": "Resources"}
+{"question": "流程固定的任务也要让大模型来决定下一步吗", "source": "08_multi_agent_mcp.md", "keyword": "可预测性"}
+{"question": "Nginx 后面的流式输出为什么一下子全部出来", "source": "09_engineering.md", "keyword": "proxy_buffering"}
+{"question": "前缀缓存为什么能省钱", "source": "06_llm_basics.md", "keyword": "KV Cache"}
+{"question": "chunk 应该切多大", "source": "03_rag.md", "keyword": "chunk 太大"}
+{"question": "同一个 thread_id 的多次调用会共享历史吗", "source": "04_langgraph.md", "keyword": "thread_id"}
+{"question": "agent 一直重复调用同一个工具停不下来", "source": "05_interview.md", "keyword": "设置最大模型调用次数"}
+{"question": "Dify 和 LangChain 该怎么选", "source": "05_interview.md", "keyword": "拖拽搭建工作流"}
+{"question": "文档更新了不想全部重新算向量", "source": "07_vector_retrieval.md", "keyword": "增量索引"}
+{"question": "人工审批时接口要一直挂起等用户点确认吗", "source": "09_engineering.md", "keyword": "resume"}
+{"question": "create_agent 里有哪些内置中间件", "source": "02_agent_and_tools.md", "keyword": "SummarizationMiddleware"}

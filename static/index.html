@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>StudyMate</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #ffffff; --text: #1d2129; --muted: #6b7280; --border: #e5e7eb;
+    --accent: #3b5bdb; --accent-text: #ffffff; --user: #e8edff; --chip: #f1f3f5; --warn: #fff7e6; --warn-border: #f0b429;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #15171c; --panel: #1e2128; --text: #e6e8ec; --muted: #9aa1ad; --border: #2e323b;
+      --accent: #748ffc; --accent-text: #11131a; --user: #263056; --chip: #2a2e37; --warn: #3a2f17; --warn-border: #c99a2e;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.6 -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; }
+  .app { max-width: 820px; margin: 0 auto; height: 100dvh; display: flex; flex-direction: column; padding: 0 16px; }
+  header { display: flex; align-items: center; justify-content: space-between; padding: 14px 0; border-bottom: 1px solid var(--border); }
+  header h1 { font-size: 17px; margin: 0; }
+  header small { color: var(--muted); font-size: 12px; }
+  #log { flex: 1; overflow-y: auto; padding: 16px 0; display: flex; flex-direction: column; gap: 12px; }
+  .msg { max-width: 88%; padding: 10px 14px; border-radius: 12px; white-space: pre-wrap; word-break: break-word; }
+  .user { align-self: flex-end; background: var(--user); }
+  .ai { align-self: flex-start; background: var(--panel); border: 1px solid var(--border); }
+  .chip { display: inline-block; font-size: 12px; color: var(--muted); background: var(--chip); border-radius: 6px; padding: 2px 8px; margin: 2px 4px 2px 0; }
+  .approval { align-self: stretch; background: var(--warn); border: 1px solid var(--warn-border); border-radius: 12px; padding: 12px 14px; }
+  .approval pre { white-space: pre-wrap; max-height: 180px; overflow: auto; background: var(--panel); padding: 8px; border-radius: 8px; font-size: 13px; }
+  .approval .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+  .error { color: #e03131; }
+  form { display: flex; gap: 8px; padding: 12px 0 16px; border-top: 1px solid var(--border); }
+  textarea { flex: 1; resize: none; height: 46px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--panel); color: var(--text); font: inherit; }
+  button { border: 0; border-radius: 10px; padding: 0 16px; min-height: 40px; background: var(--accent); color: var(--accent-text); font: inherit; cursor: pointer; }
+  button.secondary { background: var(--chip); color: var(--text); }
+  button:disabled { opacity: .5; cursor: default; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div><h1>StudyMate</h1><small id="thread"></small></div>
+    <button class="secondary" id="newBtn" type="button">新会话</button>
+  </header>
+  <div id="log"></div>
+  <form id="form">
+    <textarea id="input" placeholder="问点 LangChain / RAG / 面试题…"></textarea>
+    <button id="sendBtn">发送</button>
+  </form>
+</div>
+<script>
+const log = document.getElementById("log");
+const input = document.getElementById("input");
+const sendBtn = document.getElementById("sendBtn");
+let threadId = null;
+let busy = false;
+
+// localStorage 在隐私模式等情况下可能不可用，读写都要包 try/catch
+function store(key, value) {
+  try { localStorage.setItem(key, value); } catch (_) {}
+}
+function load(key) {
+  try { return localStorage.getItem(key); } catch (_) { return null; }
+}
+function setThread(id) {
+  threadId = id;
+  document.getElementById("thread").textContent = id ? `会话 ${id.slice(0, 8)}` : "新会话";
+  if (id) store("studymate-thread", id);
+}
+function addEl(cls, text = "") {
+  const el = document.createElement("div");
+  el.className = cls;
+  el.textContent = text;
+  log.appendChild(el);
+  log.scrollTop = log.scrollHeight;
+  return el;
+}
+function setBusy(value) {
+  busy = value;
+  sendBtn.disabled = value;
+}
+
+// 读取 SSE 流：浏览器自带的 EventSource 只支持 GET，这里用 fetch + 流式读取来支持 POST
+async function streamSSE(url, body) {
+  setBusy(true);
+  const bubble = addEl("msg ai");
+  const answer = document.createElement("div");
+  bubble.appendChild(answer);
+  try {
+    const resp = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    if (!resp.ok) throw new Error((await resp.json()).detail || resp.statusText);
+    const reader = resp.body.pipeThrough(new TextDecoderStream()).getReader();
+    let buffer = "";
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += value;
+      const parts = buffer.split("\n\n");  // 每个 SSE 事件以空行结尾
+      buffer = parts.pop();
+      for (const part of parts) {
+        const event = (part.match(/^event: (.*)$/m) || [])[1];
+        const data = (part.match(/^data: (.*)$/m) || [])[1];
+        if (event && data) handleEvent(event, JSON.parse(data), bubble, answer);
+      }
+    }
+  } catch (err) {
+    addEl("msg ai error", `请求失败：${err.message}`);
+  } finally {
+    if (!bubble.textContent.trim()) bubble.remove();
+    setBusy(false);
+  }
+}
+
+function handleEvent(event, data, bubble, answer) {
+  if (event === "start") setThread(data.thread_id);
+  else if (event === "token") answer.textContent += data.text;
+  else if (event === "tool_call") {
+    const chip = document.createElement("span");
+    chip.className = "chip";
+    chip.textContent = `🔧 ${data.name}`;
+    bubble.insertBefore(chip, answer);
+  } else if (event === "tool_result" && data.sources.length) {
+    const chip = document.createElement("span");
+    chip.className = "chip";
+    chip.textContent = `📚 ${data.sources.join("、")}`;
+    bubble.insertBefore(chip, answer);
+  } else if (event === "approval_required") showApproval(data);
+  else if (event === "error") addEl("msg ai error", data.message);
+  log.scrollTop = log.scrollHeight;
+}
+
+function showApproval(request) {
+  const card = addEl("approval");
+  const actions = request.action_requests;
+  card.innerHTML = "<strong>⚠️ StudyMate 想执行以下操作，需要你确认</strong>";
+  for (const action of actions) {
+    const pre = document.createElement("pre");
+    pre.textContent = `${action.name}\n文件名：${action.args.filename}\n\n${action.args.content}`;
+    card.appendChild(pre);
+  }
+  const row = document.createElement("div");
+  row.className = "row";
+  const decide = (makeDecision) => {
+    const decisions = actions.map(makeDecision);
+    if (decisions.includes(null)) return;
+    card.querySelectorAll("button").forEach((b) => (b.disabled = true));
+    streamSSE("/chat/resume", { thread_id: threadId, decisions });
+  };
+  const buttons = [
+    ["批准", "", () => decide(() => ({ type: "approve" }))],
+    ["改文件名", "secondary", () => decide((a) => {
+      const name = prompt("新文件名", a.args.filename);
+      return name ? { type: "edit", edited_action: { name: a.name, args: { ...a.args, filename: name } } } : null;
+    })],
+    ["拒绝", "secondary", () => decide(() => ({ type: "reject", message: "用户拒绝了这次操作" }))],
+  ];
+  for (const [label, cls, onClick] of buttons) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = label;
+    b.className = cls;
+    b.onclick = onClick;
+    row.appendChild(b);
+  }
+  card.appendChild(row);
+}
+
+async function send() {
+  const text = input.value.trim();
+  if (!text || busy) return;
+  input.value = "";
+  addEl("msg user", text);
+  await streamSSE("/chat/stream", { message: text, thread_id: threadId });
+}
+
+// 刷新页面后恢复上次的会话（会话存在服务端 SQLite 里）
+async function restore() {
+  const saved = load("studymate-thread");
+  setThread(null);
+  if (!saved) return;
+  const resp = await fetch(`/threads/${saved}`);
+  if (!resp.ok) return;
+  const data = await resp.json();
+  setThread(saved);
+  for (const m of data.messages) addEl(`msg ${m.role === "human" ? "user" : "ai"}`, m.content);
+  if (data.pending_approval) showApproval(data.pending_approval);
+}
+
+document.getElementById("form").onsubmit = (e) => { e.preventDefault(); send(); };
+input.onkeydown = (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); } };
+document.getElementById("newBtn").onclick = () => {
+  try { localStorage.removeItem("studymate-thread"); } catch (_) {}
+  log.innerHTML = "";
+  setThread(null);
+};
+restore();
+</script>
+</body>
+</html>
