@@ -4,15 +4,23 @@
 
 知识库是 data/ 目录下的 LangChain 学习笔记，你可以往里面加自己的 .md 文件。
 流程：加载 → 切分 → 向量化 → 存储（见 common.py）→ 检索 → 生成（本文件）
+
+代码来源标注（每个函数和类前面都有一行，第三方 import 的行尾写了出处）：
+  【LangChain 用法】          基本只是调用 LangChain 的接口，例子里的文字和数据是我（Claude）写的
+  【LangChain 接口 + 我写的】 用了 LangChain 的接口，逻辑或提示词是我写的（标注里写了各是哪部分）
+  【LangGraph ……】            含义同上，但 LangGraph 在另一个仓库 langchain-ai/langgraph，不在 langchain 仓库
+  【我写的】                  主要逻辑是我写的，没有依赖 LangChain / LangGraph 的功能（最多用到 Document 这类数据类型）
+"来自 LangChain"指用了它的接口和写法，这个项目没有整段复制 langchain 仓库里的代码。
 """
 
-from langchain_core.output_parsers import StrOutputParser
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.runnables import RunnablePassthrough
+from langchain_core.output_parsers import StrOutputParser  # langchain 仓库 libs/core/langchain_core/output_parsers/string.py
+from langchain_core.prompts import ChatPromptTemplate  # langchain 仓库 libs/core/langchain_core/prompts/chat.py
+from langchain_core.runnables import RunnablePassthrough  # langchain 仓库 libs/core/langchain_core/runnables/passthrough.py
 
 from common import build_vector_store, get_chat_model, load_documents, split_documents
 
 
+# 【我写的】打印 common.py 的切分结果
 def demo_split():
     print("\n=== 1. 切分：看看文档被切成了什么样 ===")
     docs = load_documents()
@@ -23,6 +31,7 @@ def demo_split():
         print(f"  内容（前 80 字）: {c.page_content[:80]!r}")
 
 
+# 【LangChain 用法】similarity_search_with_score
 def demo_retrieve(store):
     print("\n=== 2. 检索：向量相似度搜索 ===")
     query = "agent 一直重复调用工具停不下来怎么办"
@@ -31,12 +40,14 @@ def demo_retrieve(store):
         print(f"  [{score:.3f}] {doc.metadata['source']} / {doc.metadata.get('h3') or doc.metadata.get('h2')}")
 
 
+# 【我写的】把检索结果拼成带编号和来源的文字
 def format_docs(docs) -> str:
     return "\n\n".join(
         f"[{i}] 来源：{d.metadata['source']}\n{d.page_content}" for i, d in enumerate(docs, 1)
     )
 
 
+# 【LangChain 接口 + 我写的】LangChain：as_retriever、ChatPromptTemplate、RunnablePassthrough、| 管道；我写的：提示词和引用规则
 def build_rag_chain(store, model):
     """固定链路 RAG：每个问题都先检索再生成。"""
     retriever = store.as_retriever(search_kwargs={"k": 4})
@@ -58,6 +69,7 @@ def build_rag_chain(store, model):
     )
 
 
+# 【我写的】测试问题和循环，其中第三问专门测试模型会不会编造
 def demo_rag(store, model):
     print("\n=== 3. RAG 问答 ===")
     chain = build_rag_chain(store, model)
@@ -69,6 +81,7 @@ def demo_rag(store, model):
         print(f"\n问：{q}\n答：{chain.invoke(q)}")
 
 
+# 【我写的】把上面的例子依次跑一遍
 if __name__ == "__main__":
     demo_split()
     print("\n正在调用 Embedding 接口构建向量库……")

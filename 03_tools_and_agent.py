@@ -4,16 +4,24 @@
 
 这一课最重要。先不用框架手写一个 agent 循环，看懂原理；
 再用 create_agent 实现同样的功能，体会框架帮你省掉了什么。
+
+代码来源标注（每个函数和类前面都有一行，第三方 import 的行尾写了出处）：
+  【LangChain 用法】          基本只是调用 LangChain 的接口，例子里的文字和数据是我（Claude）写的
+  【LangChain 接口 + 我写的】 用了 LangChain 的接口，逻辑或提示词是我写的（标注里写了各是哪部分）
+  【LangGraph ……】            含义同上，但 LangGraph 在另一个仓库 langchain-ai/langgraph，不在 langchain 仓库
+  【我写的】                  主要逻辑是我写的，没有依赖 LangChain / LangGraph 的功能（最多用到 Document 这类数据类型）
+"来自 LangChain"指用了它的接口和写法，这个项目没有整段复制 langchain 仓库里的代码。
 """
 
-from langchain.agents import create_agent
-from langchain.tools import tool
-from langchain_core.messages import HumanMessage
+from langchain.agents import create_agent  # langchain 仓库 libs/langchain_v1/langchain/agents/factory.py
+from langchain.tools import tool  # langchain 仓库 libs/core/langchain_core/tools/convert.py
+from langchain_core.messages import HumanMessage  # langchain 仓库 libs/core/langchain_core/messages/human.py
 
 from common import get_chat_model
 from tools import calculator, get_current_time
 
 
+# 【LangChain 接口 + 我写的】LangChain：@tool；我写的：薪资假数据和计算逻辑
 @tool
 def get_salary_range(city: str, position: str) -> str:
     """查询某城市某岗位的应届生月薪范围（单位：元）。
@@ -28,9 +36,11 @@ def get_salary_range(city: str, position: str) -> str:
 
 
 TOOLS = [get_salary_range, calculator, get_current_time]
+# 【我写的】演示用的问题
 QUESTION = "北京和杭州的大模型应用开发应届生，月薪上限差多少？按 15 薪算年薪上限差多少？"
 
 
+# 【LangChain 接口 + 我写的】LangChain：bind_tools、tool_calls、tool.invoke(tool_call)、HumanMessage；我写的：循环和最大轮数控制
 def manual_agent(model, question: str, max_steps: int = 6) -> str:
     """手写 agent 循环 —— create_agent 内部做的就是这件事。"""
     print("\n=== 1. 手写 Agent 循环 ===")
@@ -59,6 +69,7 @@ def manual_agent(model, question: str, max_steps: int = 6) -> str:
     return "超过最大轮数，任务未完成"
 
 
+# 【LangChain 用法】create_agent、agent.invoke、pretty_print；create_agent 内部的循环由框架实现
 def framework_agent(model, question: str) -> str:
     """用 create_agent 实现同样的功能，只需要几行。"""
     print("\n=== 2. 使用 create_agent ===")
@@ -75,6 +86,7 @@ def framework_agent(model, question: str) -> str:
     return result["messages"][-1].content
 
 
+# 【LangChain 用法】工具对象的 name、description、args 属性
 def inspect_tool_schema():
     """看看 @tool 装饰器到底生成了什么发给模型。"""
     print("\n=== 3. 工具 schema（模型实际看到的内容）===")
@@ -83,6 +95,7 @@ def inspect_tool_schema():
     print(f"args: {get_salary_range.args}")
 
 
+# 【我写的】把上面的例子依次跑一遍
 if __name__ == "__main__":
     model = get_chat_model(temperature=0)
     inspect_tool_schema()

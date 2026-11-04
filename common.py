@@ -1,19 +1,26 @@
 """公共模块：模型初始化 + 知识库构建。所有课程脚本和 app.py 都从这里获取模型。
 
 配置全部来自 .env 文件（复制 .env.example 改名为 .env 再填写）。
+
+代码来源标注（每个函数和类前面都有一行，第三方 import 的行尾写了出处）：
+  【LangChain 用法】          基本只是调用 LangChain 的接口，例子里的文字和数据是我（Claude）写的
+  【LangChain 接口 + 我写的】 用了 LangChain 的接口，逻辑或提示词是我写的（标注里写了各是哪部分）
+  【LangGraph ……】            含义同上，但 LangGraph 在另一个仓库 langchain-ai/langgraph，不在 langchain 仓库
+  【我写的】                  主要逻辑是我写的，没有依赖 LangChain / LangGraph 的功能（最多用到 Document 这类数据类型）
+"来自 LangChain"指用了它的接口和写法，这个项目没有整段复制 langchain 仓库里的代码。
 """
 
 import os
 from pathlib import Path
 
-from dotenv import load_dotenv
-from langchain.chat_models import init_chat_model
-from langchain_core.documents import Document
-from langchain_core.embeddings import Embeddings
-from langchain_core.language_models import BaseChatModel
-from langchain_core.vectorstores import InMemoryVectorStore
-from langchain_openai import OpenAIEmbeddings
-from langchain_text_splitters import MarkdownHeaderTextSplitter, RecursiveCharacterTextSplitter
+from dotenv import load_dotenv  # 第三方库 python-dotenv，不属于 LangChain
+from langchain.chat_models import init_chat_model  # langchain 仓库 libs/langchain_v1/langchain/chat_models/base.py
+from langchain_core.documents import Document  # langchain 仓库 libs/core/langchain_core/documents/base.py
+from langchain_core.embeddings import Embeddings  # langchain 仓库 libs/core/langchain_core/embeddings/embeddings.py
+from langchain_core.language_models import BaseChatModel  # langchain 仓库 libs/core/langchain_core/language_models/chat_models.py
+from langchain_core.vectorstores import InMemoryVectorStore  # langchain 仓库 libs/core/langchain_core/vectorstores/in_memory.py
+from langchain_openai import OpenAIEmbeddings  # langchain 仓库 libs/partners/openai/langchain_openai/embeddings/base.py
+from langchain_text_splitters import MarkdownHeaderTextSplitter, RecursiveCharacterTextSplitter  # langchain 仓库 libs/text-splitters/langchain_text_splitters/
 
 load_dotenv()
 
@@ -22,6 +29,7 @@ DATA_DIR = ROOT / "data"
 DEFAULT_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"  # 阿里云百炼（通义千问）
 
 
+# 【我写的】读取环境变量，缺失时给出提示
 def _require_env(name: str) -> str:
     value = os.getenv(name)
     if not value:
@@ -33,6 +41,7 @@ def _require_env(name: str) -> str:
 # 模型
 # ---------------------------------------------------------------------------
 
+# 【LangChain 用法】init_chat_model；默认模型和百炼地址是我选的
 def get_chat_model(temperature: float = 0.3) -> BaseChatModel:
     """返回聊天模型。
 
@@ -49,6 +58,7 @@ def get_chat_model(temperature: float = 0.3) -> BaseChatModel:
     )
 
 
+# 【LangChain 用法】OpenAIEmbeddings；两个兼容参数是我为通义接口加的
 def get_embeddings() -> Embeddings:
     """返回 Embedding 模型（把文本转成向量，RAG 检索用）。"""
     return OpenAIEmbeddings(
@@ -67,6 +77,7 @@ def get_embeddings() -> Embeddings:
 # 知识库（RAG 的离线索引阶段：加载 → 切分 → 向量化 → 存储）
 # ---------------------------------------------------------------------------
 
+# 【LangChain 接口 + 我写的】LangChain：Document；我写的：读取 Markdown 文件
 def load_documents(data_dir: Path = DATA_DIR) -> list[Document]:
     """加载 data/ 下所有 Markdown 文件。
 
@@ -79,6 +90,7 @@ def load_documents(data_dir: Path = DATA_DIR) -> list[Document]:
     ]
 
 
+# 【LangChain 接口 + 我写的】LangChain：MarkdownHeaderTextSplitter、RecursiveCharacterTextSplitter；我写的：两级切分和中文分隔符
 def split_documents(docs: list[Document]) -> list[Document]:
     """两级切分：先按 Markdown 标题切成章节，章节过长时再按字符切。"""
     header_splitter = MarkdownHeaderTextSplitter(
@@ -99,6 +111,7 @@ def split_documents(docs: list[Document]) -> list[Document]:
     return chunks
 
 
+# 【LangChain 用法】InMemoryVectorStore、add_documents
 def build_vector_store(embeddings: Embeddings | None = None) -> InMemoryVectorStore:
     """构建内存向量库。生产环境可替换为 Chroma、Milvus、pgvector，接口一致。"""
     store = InMemoryVectorStore(embeddings or get_embeddings())

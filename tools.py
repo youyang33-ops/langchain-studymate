@@ -4,6 +4,13 @@
   - 函数名            → 工具名
   - docstring         → 工具描述（模型靠它判断什么时候该调用，务必写清楚）
   - 参数类型注解      → 参数的 JSON Schema
+
+代码来源标注（每个函数和类前面都有一行，第三方 import 的行尾写了出处）：
+  【LangChain 用法】          基本只是调用 LangChain 的接口，例子里的文字和数据是我（Claude）写的
+  【LangChain 接口 + 我写的】 用了 LangChain 的接口，逻辑或提示词是我写的（标注里写了各是哪部分）
+  【LangGraph ……】            含义同上，但 LangGraph 在另一个仓库 langchain-ai/langgraph，不在 langchain 仓库
+  【我写的】                  主要逻辑是我写的，没有依赖 LangChain / LangGraph 的功能（最多用到 Document 这类数据类型）
+"来自 LangChain"指用了它的接口和写法，这个项目没有整段复制 langchain 仓库里的代码。
 """
 
 import ast
@@ -13,15 +20,16 @@ from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from langchain_core.documents import Document
-from langchain_core.retrievers import BaseRetriever
-from langchain_core.tools import BaseTool
-from langchain.tools import tool
+from langchain_core.documents import Document  # langchain 仓库 libs/core/langchain_core/documents/base.py
+from langchain_core.retrievers import BaseRetriever  # langchain 仓库 libs/core/langchain_core/retrievers.py
+from langchain_core.tools import BaseTool  # langchain 仓库 libs/core/langchain_core/tools/base.py
+from langchain.tools import tool  # langchain 仓库 libs/core/langchain_core/tools/convert.py
 
 # ---------------------------------------------------------------------------
 # 计算器：用 AST 白名单求值，绝不能直接 eval 模型给的字符串（可能被注入恶意代码）
 # ---------------------------------------------------------------------------
 
+# 【我写的】计算器允许的运算符白名单
 _OPERATORS = {
     ast.Add: operator.add,
     ast.Sub: operator.sub,
@@ -34,6 +42,7 @@ _OPERATORS = {
 }
 
 
+# 【我写的】用 Python 标准库 ast 做安全求值
 def _safe_eval(node: ast.AST) -> float:
     if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
         return node.value
@@ -47,6 +56,7 @@ def _safe_eval(node: ast.AST) -> float:
     raise ValueError("只支持数字、括号和 + - * / % ** 运算")
 
 
+# 【LangChain 接口 + 我写的】LangChain：@tool；我写的：计算逻辑
 @tool
 def calculator(expression: str) -> str:
     """计算数学表达式。支持 + - * / % ** 和括号，例如 '(3+5)*2' 或 '120/7'。
@@ -59,6 +69,7 @@ def calculator(expression: str) -> str:
     return str(round(result, 6))
 
 
+# 【LangChain 接口 + 我写的】LangChain：@tool；我写的：取北京时间
 @tool
 def get_current_time() -> str:
     """获取当前北京时间（日期、星期、时刻）。涉及"今天""几天后"等日期问题时调用。"""
@@ -69,6 +80,7 @@ def get_current_time() -> str:
 # 需要外部依赖的工具用"工厂函数"创建，依赖通过闭包注入，方便测试时替换
 # ---------------------------------------------------------------------------
 
+# 【LangChain 接口 + 我写的】LangChain：BaseRetriever；我写的：把检索器包装成工具的工厂函数
 def make_search_tool(retriever: BaseRetriever) -> BaseTool:
     """把检索器包装成工具（Agentic RAG：由模型决定何时检索、检索什么）。
 
@@ -78,6 +90,7 @@ def make_search_tool(retriever: BaseRetriever) -> BaseTool:
 
     # content_and_artifact：返回 (给模型看的文本, 给程序用的原始对象)。
     # 模型只看到文本；原始 Document 列表保存在 ToolMessage.artifact 里，可用于展示引用。
+    # 【LangChain 接口 + 我写的】LangChain：@tool(response_format="content_and_artifact")、retriever.invoke；我写的：工具描述和结果格式
     @tool(response_format="content_and_artifact")
     def search_knowledge_base(query: str) -> tuple[str, list[Document]]:
         """在学习笔记知识库中检索资料。知识库涵盖 LangChain 生态、Agent 与工具调用、RAG 与向量检索、
@@ -92,9 +105,11 @@ def make_search_tool(retriever: BaseRetriever) -> BaseTool:
     return search_knowledge_base
 
 
+# 【我写的】工厂函数，把保存目录注入工具
 def make_save_note_tool(notes_dir: Path) -> BaseTool:
     """创建保存笔记的工具。它会写磁盘，属于"有副作用"的操作，app.py 中会对它加人工审批。"""
 
+    # 【LangChain 接口 + 我写的】LangChain：@tool；我写的：写文件和文件名清洗
     @tool
     def save_note(filename: str, content: str) -> str:
         """把内容保存为 Markdown 笔记文件，例如学习计划、知识点总结、面试题整理。

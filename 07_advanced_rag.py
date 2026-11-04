@@ -5,9 +5,16 @@
 组件实现都在 rag_advanced.py，本文件负责演示和对比。
 这一课最重要的是第 4 部分：用测试集量化每种方案的效果。
 面试时说"我用了混合检索"不稀奇，说"混合检索把命中率从 X% 提升到 Y%"才有说服力。
+
+代码来源标注（每个函数和类前面都有一行，第三方 import 的行尾写了出处）：
+  【LangChain 用法】          基本只是调用 LangChain 的接口，例子里的文字和数据是我（Claude）写的
+  【LangChain 接口 + 我写的】 用了 LangChain 的接口，逻辑或提示词是我写的（标注里写了各是哪部分）
+  【LangGraph ……】            含义同上，但 LangGraph 在另一个仓库 langchain-ai/langgraph，不在 langchain 仓库
+  【我写的】                  主要逻辑是我写的，没有依赖 LangChain / LangGraph 的功能（最多用到 Document 这类数据类型）
+"来自 LangChain"指用了它的接口和写法，这个项目没有整段复制 langchain 仓库里的代码。
 """
 
-from langchain_core.documents import Document
+from langchain_core.documents import Document  # langchain 仓库 libs/core/langchain_core/documents/base.py
 
 from common import get_chat_model
 from rag_advanced import (
@@ -26,6 +33,7 @@ from rag_advanced import (
 )
 
 
+# 【我写的】打印检索结果
 def show(docs: list[Document], n: int = 3):
     for d in docs[:n]:
         score = f" rerank={d.metadata['rerank_score']}" if "rerank_score" in d.metadata else ""
@@ -33,6 +41,7 @@ def show(docs: list[Document], n: int = 3):
         print(f"    · {d.metadata['source']} / {section}{score}")
 
 
+# 【LangChain 接口 + 我写的】LangChain：similarity_search；我写的：对比用例，BM25 是 rag_advanced.py 里手写的
 def demo_vector_vs_bm25(store, bm25):
     print("\n=== 1. 向量检索 vs BM25：各有擅长 ===")
     print(f"BM25 分词示例：{tokenize('Nginx 流式输出 proxy_buffering')}")
@@ -48,6 +57,7 @@ def demo_vector_vs_bm25(store, bm25):
         show([d for d, _ in bm25.search(query, k=3)])
 
 
+# 【我写的】调用 rag_advanced.py 里我写的组件
 def demo_hybrid_and_rerank(store, bm25, reranker):
     print("\n=== 2. 混合检索 + 重排序 ===")
     query = "怎么让检索结果排得更准"
@@ -59,6 +69,7 @@ def demo_hybrid_and_rerank(store, bm25, reranker):
         show(HybridRetriever(vector_store=store, bm25=bm25, reranker=reranker).invoke(query))
 
 
+# 【我写的】调用 rag_advanced.py 里我写的组件，对话历史是虚构的
 def demo_query_rewrite(model, retriever):
     print("\n=== 3. 查询改写 ===")
     history = ["用户：LangGraph 的 checkpointer 有什么用？", "助手：用于保存每一步的状态，实现记忆和中断恢复……"]
@@ -73,6 +84,7 @@ def demo_query_rewrite(model, retriever):
     show(multi_query_retrieve(retriever, [rewritten.standalone, *rewritten.variants]))
 
 
+# 【LangChain 接口 + 我写的】LangChain：similarity_search；我写的：四种方案的对比和评估表
 def demo_evaluation(store, bm25, reranker):
     print("\n=== 4. 用测试集评估（eval/retrieval_cases.jsonl）===")
     cases = load_eval_cases()
@@ -93,6 +105,7 @@ def demo_evaluation(store, bm25, reranker):
             print(f"      未命中：{q}")
 
 
+# 【我写的】组装组件，没配置重排序模型时用大模型打分代替
 if __name__ == "__main__":
     chunks = load_knowledge_base()
     store = build_chroma(chunks)  # 第一次运行会调用 Embedding，之后复用磁盘上的 .chroma/

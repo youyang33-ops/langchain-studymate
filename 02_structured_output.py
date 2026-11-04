@@ -4,14 +4,22 @@
 
 真实业务里，模型的输出往往要交给下游程序处理（存数据库、调接口、渲染页面），
 自由文本没法可靠解析。with_structured_output 让模型直接输出符合 Pydantic 定义的数据。
+
+代码来源标注（每个函数和类前面都有一行，第三方 import 的行尾写了出处）：
+  【LangChain 用法】          基本只是调用 LangChain 的接口，例子里的文字和数据是我（Claude）写的
+  【LangChain 接口 + 我写的】 用了 LangChain 的接口，逻辑或提示词是我写的（标注里写了各是哪部分）
+  【LangGraph ……】            含义同上，但 LangGraph 在另一个仓库 langchain-ai/langgraph，不在 langchain 仓库
+  【我写的】                  主要逻辑是我写的，没有依赖 LangChain / LangGraph 的功能（最多用到 Document 这类数据类型）
+"来自 LangChain"指用了它的接口和写法，这个项目没有整段复制 langchain 仓库里的代码。
 """
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field  # 第三方库 Pydantic，不属于 LangChain
 
 from common import get_chat_model
 
 
 # Field 的 description 会作为 schema 的一部分发给模型，相当于"填表说明"，要写清楚
+# 【我写的】字段是我设计的，BaseModel 和 Field 来自 Pydantic
 class DailyTask(BaseModel):
     day: int = Field(description="第几天，从 1 开始")
     topic: str = Field(description="当天学习主题")
@@ -19,12 +27,14 @@ class DailyTask(BaseModel):
     deliverable: str = Field(description="当天要完成的可检验产出，例如'跑通 RAG demo'")
 
 
+# 【我写的】字段是我设计的
 class StudyPlan(BaseModel):
     goal: str = Field(description="学习目标的一句话总结")
     tasks: list[DailyTask]
     tips: list[str] = Field(description="3 条以内的学习建议")
 
 
+# 【我写的】字段是我设计的
 class JobPosting(BaseModel):
     """从招聘 JD 中抽取的结构化信息"""
     company: str = Field(description="公司名称")
@@ -35,6 +45,7 @@ class JobPosting(BaseModel):
     nice_to_have: list[str] = Field(description="加分项技能")
 
 
+# 【我写的】虚构的招聘信息
 JD_TEXT = """
 【某某科技】大模型应用开发工程师（Agent 方向）— 北京
 岗位职责：负责基于大模型的智能体应用研发，包括 RAG 知识库问答、多 Agent 工作流编排。
@@ -46,6 +57,7 @@ JD_TEXT = """
 """
 
 
+# 【LangChain 用法】with_structured_output(method="function_calling")；打印结果的部分是我写的
 def demo_study_plan(model):
     print("\n=== 1. 生成结构化学习计划 ===")
     # method="function_calling"：把 schema 当作一个工具让模型"调用"，兼容性最好。
@@ -61,6 +73,7 @@ def demo_study_plan(model):
     print("建议：", *plan.tips, sep="\n  - ")
 
 
+# 【LangChain 接口 + 我写的】LangChain：with_structured_output；我写的：用抽取结果对比缺少哪些技能
 def demo_extract_jd(model):
     print("\n=== 2. 信息抽取：解析招聘 JD ===")
     extractor = model.with_structured_output(JobPosting, method="function_calling")
@@ -73,6 +86,7 @@ def demo_extract_jd(model):
     print(f"\n你还需要补的硬性技能：{missing}")
 
 
+# 【LangChain 用法】with_structured_output(include_raw=True) 及它返回的 raw / parsed / parsing_error
 def demo_include_raw(model):
     print("\n=== 3. include_raw：调试时查看模型原始输出 ===")
     extractor = model.with_structured_output(JobPosting, method="function_calling", include_raw=True)
@@ -83,6 +97,7 @@ def demo_include_raw(model):
     print(f"解析错误：{result['parsing_error']}")
 
 
+# 【我写的】把上面的例子依次跑一遍
 if __name__ == "__main__":
     model = get_chat_model(temperature=0)  # 抽取类任务用低温度，结果更稳定
     demo_study_plan(model)

@@ -1,14 +1,23 @@
-"""第 8 课多 Agent 的测试。"""
+"""第 8 课多 Agent 的测试。
+
+代码来源标注（每个函数和类前面都有一行，第三方 import 的行尾写了出处）：
+  【LangChain 用法】          基本只是调用 LangChain 的接口，例子里的文字和数据是我（Claude）写的
+  【LangChain 接口 + 我写的】 用了 LangChain 的接口，逻辑或提示词是我写的（标注里写了各是哪部分）
+  【LangGraph ……】            含义同上，但 LangGraph 在另一个仓库 langchain-ai/langgraph，不在 langchain 仓库
+  【我写的】                  主要逻辑是我写的，没有依赖 LangChain / LangGraph 的功能（最多用到 Document 这类数据类型）
+"来自 LangChain"指用了它的接口和写法，这个项目没有整段复制 langchain 仓库里的代码。
+"""
 
 import importlib
 
-from langchain_core.messages import AIMessage, ToolMessage
+from langchain_core.messages import AIMessage, ToolMessage  # langchain 仓库 libs/core/langchain_core/messages/
 
 from tests.fakes import fake_vector_store, scripted, tool_call
 
 lesson = importlib.import_module("08_multi_agent")
 
 
+# 【我写的】测试：主管委派任务、子 Agent 上下文隔离、回调计数
 def test_supervisor_delegates_to_subagents_with_isolated_context():
     # 主管和子 Agent 共用同一个假模型，剧本按实际调用顺序编排
     model = scripted(
@@ -34,6 +43,7 @@ def test_supervisor_delegates_to_subagents_with_isolated_context():
     assert counter.calls == 8
 
 
+# 【我写的】测试：并行分支的结果被正确合并
 def test_map_reduce_workflow_researches_each_skill_in_parallel():
     model = scripted(
         tool_call("SkillList", {"skills": ["RAG", "LangGraph"]}),

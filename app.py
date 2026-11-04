@@ -11,6 +11,13 @@
   6. 对话过长时自动摘要，防止超出上下文窗口                    → 第 5 课 中间件
   7. 限制单轮最多调用模型次数，防止死循环；工具出错不崩溃      → 第 5 课 中间件
   8. 流式输出回答，并实时展示 agent 调用了哪些工具             → 第 1 课 流式 + LangGraph stream
+
+代码来源标注（每个函数和类前面都有一行，第三方 import 的行尾写了出处）：
+  【LangChain 用法】          基本只是调用 LangChain 的接口，例子里的文字和数据是我（Claude）写的
+  【LangChain 接口 + 我写的】 用了 LangChain 的接口，逻辑或提示词是我写的（标注里写了各是哪部分）
+  【LangGraph ……】            含义同上，但 LangGraph 在另一个仓库 langchain-ai/langgraph，不在 langchain 仓库
+  【我写的】                  主要逻辑是我写的，没有依赖 LangChain / LangGraph 的功能（最多用到 Document 这类数据类型）
+"来自 LangChain"指用了它的接口和写法，这个项目没有整段复制 langchain 仓库里的代码。
 """
 
 import json
@@ -18,25 +25,26 @@ import uuid
 from collections.abc import Callable
 from pathlib import Path
 
-from langchain.agents import create_agent
+from langchain.agents import create_agent  # langchain 仓库 libs/langchain_v1/langchain/agents/factory.py
 from langchain.agents.middleware import (
-    AgentMiddleware,
-    HumanInTheLoopMiddleware,
-    ModelCallLimitMiddleware,
-    SummarizationMiddleware,
+    AgentMiddleware,  # langchain 仓库 libs/langchain_v1/langchain/agents/middleware/types.py
+    HumanInTheLoopMiddleware,  # langchain 仓库 libs/langchain_v1/langchain/agents/middleware/human_in_the_loop.py
+    ModelCallLimitMiddleware,  # langchain 仓库 libs/langchain_v1/langchain/agents/middleware/model_call_limit.py
+    SummarizationMiddleware,  # langchain 仓库 libs/langchain_v1/langchain/agents/middleware/summarization.py
 )
-from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import AIMessage, ToolMessage
-from langchain_core.retrievers import BaseRetriever
-from langgraph.checkpoint.memory import InMemorySaver
-from langgraph.errors import GraphBubbleUp
-from langgraph.types import Command
+from langchain_core.language_models import BaseChatModel  # langchain 仓库 libs/core/langchain_core/language_models/chat_models.py
+from langchain_core.messages import AIMessage, ToolMessage  # langchain 仓库 libs/core/langchain_core/messages/
+from langchain_core.retrievers import BaseRetriever  # langchain 仓库 libs/core/langchain_core/retrievers.py
+from langgraph.checkpoint.memory import InMemorySaver  # 来自 langchain-ai/langgraph 仓库，不在 langchain 仓库
+from langgraph.errors import GraphBubbleUp  # 来自 langchain-ai/langgraph 仓库，不在 langchain 仓库
+from langgraph.types import Command  # 来自 langchain-ai/langgraph 仓库，不在 langchain 仓库
 
 from common import ROOT, get_chat_model
 from tools import calculator, get_current_time, make_save_note_tool, make_search_tool
 
 NOTES_DIR = ROOT / "notes"
 
+# 【我写的】StudyMate 的系统提示词
 SYSTEM_PROMPT = """你是 StudyMate，帮助用户学习 LangChain 并准备 Agent 开发岗位求职。
 
 工作规则：
@@ -48,6 +56,7 @@ SYSTEM_PROMPT = """你是 StudyMate，帮助用户学习 LangChain 并准备 Age
 4. 用中文回答，简洁、条理清晰。"""
 
 
+# 【LangChain 接口 + 我写的】LangChain：AgentMiddleware 基类；我写的：工具错误处理
 class ToolErrorHandler(AgentMiddleware):
     """工具抛异常时，把错误信息作为工具结果返回给模型，让它向用户说明，而不是让程序崩溃。
 
@@ -56,6 +65,7 @@ class ToolErrorHandler(AgentMiddleware):
     继承 AgentMiddleware 同时实现同步和异步两个方法，命令行和 Web 服务就都能用。
     """
 
+    # 【LangChain 接口 + 我写的】LangChain：方法名和 handler(request) 约定；LangGraph：GraphBubbleUp；我写的：异常处理
     def wrap_tool_call(self, request, handler):
         try:
             return handler(request)
@@ -64,6 +74,7 @@ class ToolErrorHandler(AgentMiddleware):
         except Exception as e:
             return self._error_message(request, e)
 
+    # 【LangChain 接口 + 我写的】LangChain：方法名和 handler(request) 约定；LangGraph：GraphBubbleUp；我写的：异常处理
     async def awrap_tool_call(self, request, handler):
         try:
             return await handler(request)
@@ -72,6 +83,7 @@ class ToolErrorHandler(AgentMiddleware):
         except Exception as e:
             return self._error_message(request, e)
 
+    # 【LangChain 接口 + 我写的】LangChain：ToolMessage；我写的：错误提示文字
     @staticmethod
     def _error_message(request, error: Exception) -> ToolMessage:
         return ToolMessage(
@@ -80,6 +92,7 @@ class ToolErrorHandler(AgentMiddleware):
         )
 
 
+# 【LangChain + LangGraph 接口 + 我写的】LangChain：create_agent 和三个内置中间件；LangGraph：InMemorySaver；我写的：工具和中间件的选择、参数、组合
 def build_agent(
     model: BaseChatModel,
     retriever: BaseRetriever,
@@ -118,6 +131,7 @@ def build_agent(
 # 命令行交互
 # ---------------------------------------------------------------------------
 
+# 【我写的】终端审批交互，返回的 decisions 格式是 LangChain 规定的
 def cli_review(request: dict) -> list[dict]:
     """在终端里让用户审批 agent 想执行的操作，返回与 action_requests 一一对应的决定列表。"""
     decisions = []
@@ -143,15 +157,18 @@ def cli_review(request: dict) -> list[dict]:
     return decisions
 
 
+# 【我写的】兼容节点更新是 dict 或 list 两种情况
 def _messages_in(update) -> list:
     """取出节点更新里的消息。工具并行执行时，更新可能是多个 dict 组成的列表。"""
     updates = update if isinstance(update, list) else [update]
     return [m for u in updates if isinstance(u, dict) for m in u.get("messages", [])]
 
 
+# 【LangGraph 用法】stream_mode 的两种取值
 STREAM_MODES = ["messages", "updates"]
 
 
+# 【LangGraph 接口 + 我写的】LangGraph：messages / updates 流的数据结构；我写的：翻译成事件的逻辑，以及过滤内部模型调用
 def to_events(mode: str, data) -> list[dict]:
     """把 LangGraph 的原始流数据翻译成前端关心的事件。命令行（run_turn）和 Web 服务（server.py）共用。
 
@@ -178,6 +195,7 @@ def to_events(mode: str, data) -> list[dict]:
     return events
 
 
+# 【LangGraph 接口 + 我写的】LangGraph：agent.stream、Command(resume=...)；我写的：打印和审批循环
 def run_turn(agent, user_input: str, config: dict, review: Callable[[dict], list[dict]] = cli_review):
     """处理一轮用户输入：流式打印回答，遇到人工审批就暂停询问，然后继续。"""
     payload = {"messages": [{"role": "user", "content": user_input}]}
@@ -204,6 +222,7 @@ def run_turn(agent, user_input: str, config: dict, review: Callable[[dict], list
         payload = Command(resume={"decisions": review(interrupt_request)})
 
 
+# 【我写的】命令行帮助文字
 HELP = """
 StudyMate —— LangChain 学习助手
 可以试试：
@@ -215,6 +234,7 @@ StudyMate —— LangChain 学习助手
 """
 
 
+# 【我写的】命令行主循环和 /new、/quit 命令
 def main():
     from rag_advanced import build_default_retriever  # 混合检索 + 可选重排序（第 7 课）
 
@@ -244,5 +264,6 @@ def main():
     print("\n再见！保存的笔记在 notes/ 目录。")
 
 
+# 【我写的】程序入口
 if __name__ == "__main__":
     main()

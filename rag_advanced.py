@@ -7,6 +7,13 @@
   5. 重排序（Rerank）：通义 qwen3-rerank 接口，或用大模型打分兜底
   6. 查询改写：消除多轮对话中的指代，并生成多个检索语句
   7. 检索评估：命中率（Hit Rate）和 MRR
+
+代码来源标注（每个函数和类前面都有一行，第三方 import 的行尾写了出处）：
+  【LangChain 用法】          基本只是调用 LangChain 的接口，例子里的文字和数据是我（Claude）写的
+  【LangChain 接口 + 我写的】 用了 LangChain 的接口，逻辑或提示词是我写的（标注里写了各是哪部分）
+  【LangGraph ……】            含义同上，但 LangGraph 在另一个仓库 langchain-ai/langgraph，不在 langchain 仓库
+  【我写的】                  主要逻辑是我写的，没有依赖 LangChain / LangGraph 的功能（最多用到 Document 这类数据类型）
+"来自 LangChain"指用了它的接口和写法，这个项目没有整段复制 langchain 仓库里的代码。
 """
 
 import hashlib
@@ -19,15 +26,15 @@ from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
-import httpx
-from langchain_chroma import Chroma
-from langchain_core.callbacks import CallbackManagerForRetrieverRun
-from langchain_core.documents import Document
-from langchain_core.embeddings import Embeddings
-from langchain_core.language_models import BaseChatModel
-from langchain_core.retrievers import BaseRetriever
-from langchain_core.vectorstores import VectorStore
-from pydantic import BaseModel, ConfigDict, Field
+import httpx  # 第三方库 httpx，不属于 LangChain
+from langchain_chroma import Chroma  # langchain 仓库 libs/partners/chroma/langchain_chroma/vectorstores.py
+from langchain_core.callbacks import CallbackManagerForRetrieverRun  # langchain 仓库 libs/core/langchain_core/callbacks/manager.py
+from langchain_core.documents import Document  # langchain 仓库 libs/core/langchain_core/documents/base.py
+from langchain_core.embeddings import Embeddings  # langchain 仓库 libs/core/langchain_core/embeddings/embeddings.py
+from langchain_core.language_models import BaseChatModel  # langchain 仓库 libs/core/langchain_core/language_models/chat_models.py
+from langchain_core.retrievers import BaseRetriever  # langchain 仓库 libs/core/langchain_core/retrievers.py
+from langchain_core.vectorstores import VectorStore  # langchain 仓库 libs/core/langchain_core/vectorstores/base.py
+from pydantic import BaseModel, ConfigDict, Field  # 第三方库 Pydantic，不属于 LangChain
 
 from common import DATA_DIR, ROOT, get_embeddings, load_documents, split_documents
 
@@ -39,13 +46,14 @@ EVAL_FILE = ROOT / "eval" / "retrieval_cases.jsonl"
 # 1. 加载：Markdown + PDF
 # ---------------------------------------------------------------------------
 
+# 【LangChain 接口 + 我写的】LangChain：Document；pypdf：PdfReader；我写的：按页转换
 def load_pdf(path: Path) -> list[Document]:
     """每一页一个 Document，metadata 记录页码，回答时可以引用"第几页"。
 
     注意：pypdf 只能提取文字层。扫描件需要 OCR；表格、公式多的 PDF
     可以考虑 MinerU、Unstructured 等专门的文档解析工具。
     """
-    from pypdf import PdfReader
+    from pypdf import PdfReader  # 第三方库 pypdf，不属于 LangChain
 
     return [
         Document(page_content=text, metadata={"source": path.name, "page": i})
@@ -54,6 +62,7 @@ def load_pdf(path: Path) -> list[Document]:
     ]
 
 
+# 【我写的】合并 Markdown 和 PDF
 def load_knowledge_base(data_dir: Path = DATA_DIR) -> list[Document]:
     docs = load_documents(data_dir)
     for pdf in sorted(data_dir.glob("*.pdf")):
@@ -61,6 +70,7 @@ def load_knowledge_base(data_dir: Path = DATA_DIR) -> list[Document]:
     return split_documents(docs)
 
 
+# 【我写的】用内容哈希生成 id
 def chunk_id(doc: Document) -> str:
     """用"来源 + 内容"的哈希作为 chunk 的唯一 id：内容不变 id 就不变，这是增量索引的基础。"""
     return hashlib.sha1(f"{doc.metadata.get('source')}\n{doc.page_content}".encode()).hexdigest()[:16]
@@ -70,6 +80,7 @@ def chunk_id(doc: Document) -> str:
 # 2. 持久化向量库 + 增量索引
 # ---------------------------------------------------------------------------
 
+# 【LangChain 接口 + 我写的】LangChain：Chroma（langchain-chroma 包）的 get、delete、add_documents；我写的：增量同步逻辑
 def build_chroma(
     chunks: list[Document],
     embeddings: Embeddings | None = None,
@@ -108,9 +119,11 @@ def build_chroma(
 # 3. BM25 关键词检索
 # ---------------------------------------------------------------------------
 
+# 【我写的】分词用的正则
 _TOKEN_RE = re.compile(r"[a-z0-9_]+|[一-鿿]+")
 
 
+# 【我写的】英文按单词、中文按 bigram 分词
 def tokenize(text: str) -> list[str]:
     """英文和数字按单词切分，中文切成相邻两字一组（bigram）。
 
@@ -126,6 +139,7 @@ def tokenize(text: str) -> list[str]:
     return tokens
 
 
+# 【我写的】没有用现成的 BM25 组件，公式是公开的 BM25 算法，代码是我写的
 class BM25Index:
     """BM25 打分公式（面试常考）：
 
@@ -137,6 +151,7 @@ class BM25Index:
       b       控制文档长度归一化：长文档天然包含更多词，需要惩罚
     """
 
+    # 【我写的】统计词频和 IDF
     def __init__(self, docs: list[Document], k1: float = 1.5, b: float = 0.75):
         self.docs, self.k1, self.b = docs, k1, b
         self.term_freqs = [Counter(tokenize(d.page_content)) for d in docs]
@@ -146,6 +161,7 @@ class BM25Index:
         n = len(docs)
         self.idf = {t: math.log((n - df + 0.5) / (df + 0.5) + 1) for t, df in doc_freq.items()}
 
+    # 【我写的】实现 BM25 打分公式
     def score(self, query_tokens: list[str], i: int) -> float:
         tf, norm = self.term_freqs[i], 1 - self.b + self.b * self.doc_lens[i] / self.avgdl
         return sum(
@@ -153,6 +169,7 @@ class BM25Index:
             for t in query_tokens if t in tf
         )
 
+    # 【我写的】打分并排序
     def search(self, query: str, k: int = 4) -> list[tuple[Document, float]]:
         tokens = tokenize(query)
         scored = [(self.docs[i], self.score(tokens, i)) for i in range(len(self.docs))]
@@ -164,6 +181,7 @@ class BM25Index:
 # 4. 混合检索：RRF 融合
 # ---------------------------------------------------------------------------
 
+# 【我写的】公式是公开的 RRF 算法，代码是我写的
 def reciprocal_rank_fusion(result_lists: Iterable[list[Document]], k: int = 60) -> list[Document]:
     """RRF：score(d) = Σ 1 / (k + rank_i(d))
 
@@ -181,11 +199,14 @@ def reciprocal_rank_fusion(result_lists: Iterable[list[Document]], k: int = 60) 
     return [docs[key] for key in sorted(scores, key=scores.get, reverse=True)]
 
 
+# 【我写的】定义重排序器的接口
 @runtime_checkable
 class Reranker(Protocol):
+    # 【我写的】接口方法
     def rerank(self, query: str, docs: list[Document], top_n: int) -> list[Document]: ...
 
 
+# 【LangChain 接口 + 我写的】LangChain：BaseRetriever 基类；我写的：混合检索和重排序流程
 class HybridRetriever(BaseRetriever):
     """自定义检索器：向量召回 + BM25 召回 → RRF 融合 →（可选）重排序。
 
@@ -201,6 +222,7 @@ class HybridRetriever(BaseRetriever):
     fetch_k: int = 10  # 每一路召回的数量（粗排）
     top_k: int = 4     # 最终返回的数量（精排）
 
+    # 【LangChain 接口 + 我写的】LangChain：方法名和签名由 BaseRetriever 规定，similarity_search；我写的：召回、融合、重排的流程
     def _get_relevant_documents(self, query: str, *, run_manager: CallbackManagerForRetrieverRun) -> list[Document]:
         dense = self.vector_store.similarity_search(query, k=self.fetch_k)
         sparse = [doc for doc, _ in self.bm25.search(query, k=self.fetch_k)]
@@ -214,6 +236,7 @@ class HybridRetriever(BaseRetriever):
 # 5. 重排序
 # ---------------------------------------------------------------------------
 
+# 【我写的】不是 LangChain 的组件，请求格式来自阿里云百炼文档
 class DashScopeReranker:
     """调用阿里云百炼的 qwen3-rerank 接口。
 
@@ -224,11 +247,13 @@ class DashScopeReranker:
 
     DEFAULT_URL = "https://dashscope.aliyuncs.com/api/v1/services/rerank/text-rerank/text-rerank"
 
+    # 【我写的】读取配置
     def __init__(self, model: str | None = None, api_key: str | None = None, url: str | None = None):
         self.model = model or os.getenv("RERANK_MODEL", "qwen3-rerank")
         self.api_key = api_key or os.getenv("RERANK_API_KEY") or os.getenv("LLM_API_KEY")
         self.url = url or os.getenv("RERANK_URL") or self.DEFAULT_URL
 
+    # 【我写的】用 httpx 调用百炼的 rerank 接口
     def rerank(self, query: str, docs: list[Document], top_n: int) -> list[Document]:
         if not docs:
             return []
@@ -250,21 +275,26 @@ class DashScopeReranker:
         ]
 
 
+# 【我写的】字段是我设计的，BaseModel 和 Field 来自 Pydantic
 class _DocScore(BaseModel):
     index: int = Field(description="资料编号")
     score: int = Field(ge=0, le=10, description="与问题的相关性，0=无关，10=直接回答了问题")
 
 
+# 【我写的】字段是我设计的
 class _DocScores(BaseModel):
     scores: list[_DocScore]
 
 
+# 【LangChain 接口 + 我写的】LangChain：with_structured_output；我写的：让大模型打分的重排序方案
 class LLMReranker:
     """没有专用 rerank 接口时，让大模型给每个片段打分。比专用模型慢且贵，适合演示或兜底。"""
 
+    # 【LangChain 用法】with_structured_output
     def __init__(self, model: BaseChatModel):
         self.scorer = model.with_structured_output(_DocScores, method="function_calling")
 
+    # 【LangChain 接口 + 我写的】LangChain：调用 scorer；我写的：提示词和排序
     def rerank(self, query: str, docs: list[Document], top_n: int) -> list[Document]:
         if not docs:
             return []
@@ -277,15 +307,18 @@ class LLMReranker:
         return [_with_score(docs[i], scores.get(i, 0) / 10) for i in ranked[:top_n]]
 
 
+# 【我写的】把分数写进 metadata
 def _with_score(doc: Document, score: float) -> Document:
     return Document(page_content=doc.page_content, metadata={**doc.metadata, "rerank_score": round(score, 4)})
 
 
+# 【我写的】根据配置决定是否启用重排序
 def get_reranker() -> Reranker | None:
     """配置了 RERANK_MODEL 就启用专用重排序模型，否则不重排。"""
     return DashScopeReranker() if os.getenv("RERANK_MODEL") else None
 
 
+# 【我写的】组装 rag_advanced.py 里的组件
 def build_default_retriever(embeddings: Embeddings | None = None, reranker: Reranker | None = None) -> HybridRetriever:
     """app.py 和 server.py 使用的生产级检索器。"""
     chunks = load_knowledge_base()
@@ -300,11 +333,13 @@ def build_default_retriever(embeddings: Embeddings | None = None, reranker: Rera
 # 6. 查询改写
 # ---------------------------------------------------------------------------
 
+# 【我写的】字段是我设计的，BaseModel 和 Field 来自 Pydantic
 class RewrittenQuery(BaseModel):
     standalone: str = Field(description="结合对话历史改写成的独立、完整的问题，消除'它''这个''那'等指代")
     variants: list[str] = Field(description="2-3 个换了表述或侧重点的检索语句，用于多路召回")
 
 
+# 【LangChain 接口 + 我写的】LangChain：with_structured_output；我写的：提示词
 def rewrite_query(model: BaseChatModel, question: str, history: list[str] = ()) -> RewrittenQuery:
     """多轮对话中用户常说"那它呢"，直接拿这句话去检索什么都找不到，要先改写。"""
     rewriter = model.with_structured_output(RewrittenQuery, method="function_calling")
@@ -312,6 +347,7 @@ def rewrite_query(model: BaseChatModel, question: str, history: list[str] = ()) 
     return rewriter.invoke(f"对话历史：\n{context}\n\n用户最新问题：{question}\n\n请改写成适合知识库检索的语句。")
 
 
+# 【LangChain 接口 + 我写的】LangChain：retriever.batch；我写的：多路结果用 RRF 合并
 def multi_query_retrieve(retriever: BaseRetriever, queries: list[str], top_k: int = 4) -> list[Document]:
     """多个检索语句分别检索，再用 RRF 合并：提高召回率，降低单次表述不准带来的漏检。"""
     return reciprocal_rank_fusion(retriever.batch(queries))[:top_k]
@@ -321,15 +357,18 @@ def multi_query_retrieve(retriever: BaseRetriever, queries: list[str], top_k: in
 # 7. 检索评估
 # ---------------------------------------------------------------------------
 
+# 【我写的】读取测试集
 def load_eval_cases(path: Path = EVAL_FILE) -> list[dict]:
     """每条用例：问题 + 正确答案所在的文件 + 该 chunk 中必须出现的关键词。"""
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
 
 
+# 【我写的】判断一条结果是否命中
 def is_hit(doc: Document, case: dict) -> bool:
     return doc.metadata.get("source") == case["source"] and case["keyword"].lower() in doc.page_content.lower()
 
 
+# 【我写的】计算命中率和 MRR
 def evaluate_retrieval(search: Callable[[str], list[Document]], cases: list[dict]) -> dict:
     """Hit Rate：正确 chunk 出现在结果中的比例。
     MRR（平均倒数排名）：正确 chunk 排第 1 得 1 分、排第 2 得 1/2 分……取平均，衡量排得靠不靠前。"""
@@ -349,6 +388,7 @@ def evaluate_retrieval(search: Callable[[str], list[Document]], cases: list[dict
     }
 
 
+# 【我写的】单独运行时同步索引
 if __name__ == "__main__":
     # 单独运行本文件：只构建 / 同步一次索引
     build_default_retriever()

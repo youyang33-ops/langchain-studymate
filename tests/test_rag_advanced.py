@@ -1,9 +1,17 @@
-"""第 7 课进阶 RAG 组件的测试。"""
+"""第 7 课进阶 RAG 组件的测试。
 
-import httpx
-import pytest
-from langchain_core.documents import Document
-from langchain_core.embeddings import DeterministicFakeEmbedding
+代码来源标注（每个函数和类前面都有一行，第三方 import 的行尾写了出处）：
+  【LangChain 用法】          基本只是调用 LangChain 的接口，例子里的文字和数据是我（Claude）写的
+  【LangChain 接口 + 我写的】 用了 LangChain 的接口，逻辑或提示词是我写的（标注里写了各是哪部分）
+  【LangGraph ……】            含义同上，但 LangGraph 在另一个仓库 langchain-ai/langgraph，不在 langchain 仓库
+  【我写的】                  主要逻辑是我写的，没有依赖 LangChain / LangGraph 的功能（最多用到 Document 这类数据类型）
+"来自 LangChain"指用了它的接口和写法，这个项目没有整段复制 langchain 仓库里的代码。
+"""
+
+import httpx  # 第三方库 httpx，不属于 LangChain
+import pytest  # 第三方库 pytest，不属于 LangChain
+from langchain_core.documents import Document  # langchain 仓库 libs/core/langchain_core/documents/base.py
+from langchain_core.embeddings import DeterministicFakeEmbedding  # langchain 仓库 libs/core/langchain_core/embeddings/fake.py
 
 import rag_advanced
 from rag_advanced import (
@@ -25,6 +33,7 @@ from rag_advanced import (
 from tests.fakes import fake_vector_store, scripted, tool_call
 
 
+# 【我写的】小工具：创建 Document
 def doc(text: str, source: str = "a.md") -> Document:
     return Document(page_content=text, metadata={"source": source})
 
@@ -33,6 +42,7 @@ def doc(text: str, source: str = "a.md") -> Document:
 # 加载与评估集
 # ---------------------------------------------------------------------------
 
+# 【我写的】手写一个最小的 PDF，测试用
 def make_pdf(path, text: str):
     """手写一个最小的单页 PDF（只含英文，因为标准 Helvetica 字体没有中文字形）。"""
     content = f"BT /F1 12 Tf 72 720 Td ({text}) Tj ET".encode()
@@ -55,6 +65,7 @@ def make_pdf(path, text: str):
     path.write_bytes(out)
 
 
+# 【我写的】测试：PDF 会进入知识库
 def test_knowledge_base_includes_pdf_pages(tmp_path):
     (tmp_path / "notes.md").write_text("# 标题\n\n正文内容", encoding="utf-8")
     make_pdf(tmp_path / "paper.pdf", "Hybrid search combines BM25 and dense vectors")
@@ -66,12 +77,14 @@ def test_knowledge_base_includes_pdf_pages(tmp_path):
     assert "BM25" in pdf_chunks[0].page_content
 
 
+# 【我写的】测试：评估集每条用例只对应一个答案片段
 def test_every_eval_case_has_exactly_one_answer_chunk():
     chunks = load_knowledge_base()
     for case in load_eval_cases():
         assert sum(is_hit(c, case) for c in chunks) == 1, case["question"]
 
 
+# 【我写的】测试：命中率和 MRR 的计算
 def test_evaluate_retrieval_metrics():
     cases = [
         {"question": "q1", "source": "a.md", "keyword": "答案"},
@@ -93,10 +106,12 @@ def test_evaluate_retrieval_metrics():
 # BM25 与 RRF
 # ---------------------------------------------------------------------------
 
+# 【我写的】测试：分词结果
 def test_tokenize_mixes_words_and_chinese_bigrams():
     assert tokenize("RAG 召回率 HNSW") == ["rag", "召回", "回率", "hnsw"]
 
 
+# 【我写的】测试：BM25 排序和 IDF
 def test_bm25_prefers_rare_matching_terms():
     docs = [doc("向量 检索 介绍"), doc("向量 数据库 HNSW 索引"), doc("向量 向量 向量")]
     bm25 = BM25Index(docs)
@@ -106,6 +121,7 @@ def test_bm25_prefers_rare_matching_terms():
     assert bm25.search("完全不相关的词", k=3) == []
 
 
+# 【我写的】测试：RRF 融合排序
 def test_rrf_rewards_documents_found_by_both_retrievers():
     a, b, c = doc("A"), doc("B"), doc("C")
     fused = reciprocal_rank_fusion([[a, b], [c, b]])
@@ -117,11 +133,14 @@ def test_rrf_rewards_documents_found_by_both_retrievers():
 # 混合检索、重排序、查询改写
 # ---------------------------------------------------------------------------
 
+# 【我写的】测试用的假重排序器
 class ReverseReranker:
+    # 【我写的】把结果倒序
     def rerank(self, query, docs, top_n):
         return list(reversed(docs))[:top_n]
 
 
+# 【我写的】测试：混合检索和重排序的流程
 def test_hybrid_retriever_fuses_then_reranks():
     chunks = load_knowledge_base()
     store = fake_vector_store()
@@ -135,9 +154,11 @@ def test_hybrid_retriever_fuses_then_reranks():
     assert reranked.invoke(query) != plain.invoke(query)
 
 
+# 【我写的】测试：rerank 接口的请求和响应格式
 def test_dashscope_reranker_request_and_response(monkeypatch):
     sent = {}
 
+    # 【我写的】代替真实网络请求
     def fake_post(url, headers, json, timeout):
         sent.update(url=url, headers=headers, json=json)
         body = {"output": {"results": [{"index": 1, "relevance_score": 0.91}, {"index": 0, "relevance_score": 0.12}]}}
@@ -157,6 +178,7 @@ def test_dashscope_reranker_request_and_response(monkeypatch):
     assert result[0].metadata["rerank_score"] == 0.91
 
 
+# 【我写的】测试：按模型打分排序
 def test_llm_reranker_sorts_by_model_scores():
     model = scripted(tool_call("_DocScores", {"scores": [
         {"index": 0, "score": 2}, {"index": 1, "score": 9}, {"index": 2, "score": 5},
@@ -165,6 +187,7 @@ def test_llm_reranker_sorts_by_model_scores():
     assert [d.page_content for d in result] == ["高", "中"]
 
 
+# 【我写的】测试：查询改写和多路合并
 def test_rewrite_and_multi_query():
     model = scripted(tool_call("RewrittenQuery", {
         "standalone": "LangGraph 生产环境用哪种 checkpointer",
@@ -183,6 +206,7 @@ def test_rewrite_and_multi_query():
 # 持久化与增量索引
 # ---------------------------------------------------------------------------
 
+# 【我写的】测试：增量索引的新增、修改、删除
 def test_chroma_incremental_indexing(tmp_path):
     embeddings = DeterministicFakeEmbedding(size=32)
     chunks = [doc("第一段"), doc("第二段"), doc("第三段")]
@@ -196,10 +220,13 @@ def test_chroma_incremental_indexing(tmp_path):
     assert set(store.get(include=[])["ids"]) == {chunk_id(c) for c in updated}
 
 
+# 【我写的】测试：内容不变时不重新计算向量
 def test_chroma_skips_embedding_for_unchanged_chunks(tmp_path):
+    # 【我写的】统计 Embedding 调用次数
     class CountingEmbedding(DeterministicFakeEmbedding):
         calls: int = 0
 
+        # 【我写的】计数后调用父类方法
         def embed_documents(self, texts):
             self.calls += len(texts)
             return super().embed_documents(texts)
